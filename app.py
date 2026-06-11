@@ -1,4 +1,4 @@
-import streamlit as st
+import gradio as gr
 import tempfile
 import os
 from dotenv import load_dotenv
@@ -15,334 +15,108 @@ from core.extractor import (
 )
 from core.rag_engine import build_rag_chain, ask_question
 
+# ── Global state ───────────────────────────────────────────────────────────────
+rag_chain_state = {"chain": None}
 
-# -------------------------------------------------
-# PAGE CONFIG
-# -------------------------------------------------
 
-st.set_page_config(
-    page_title="AI Video Assistant",
-    page_icon="🎥",
-    layout="wide"
-)
-
-# -------------------------------------------------
-# CUSTOM CSS
-# -------------------------------------------------
-
-st.markdown("""
-<style>
-
-.main {
-    padding-top: 1rem;
-}
-
-.block-container {
-    max-width: 1400px;
-}
-
-.stButton > button {
-    width: 100%;
-    height: 3rem;
-    border-radius: 12px;
-    font-weight: bold;
-    font-size: 16px;
-}
-
-[data-testid="stFileUploader"] {
-    border: 2px dashed #4F46E5;
-    border-radius: 15px;
-    padding: 20px;
-}
-
-.chat-box {
-    border-radius: 10px;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-# -------------------------------------------------
-# PIPELINE
-# -------------------------------------------------
-
-def run_pipeline(source, language="english"):
-
-    chunks = process_input(source)
-
-    transcript = transcribe_all(
-        chunks,
-        language=language
-    )
-
-    title = generate_title(transcript)
-
-    summary = summarize(transcript)
-
-    action_items = extract_action_items(transcript)
-
-    decisions = extract_key_decisions(transcript)
-
-    questions = extract_questions(transcript)
-
-    rag_chain = build_rag_chain(transcript)
-
-    return {
-        "title": title,
-        "transcript": transcript,
-        "summary": summary,
-        "action_items": action_items,
-        "decisions": decisions,
-        "questions": questions,
-        "rag_chain": rag_chain
-    }
-
-# -------------------------------------------------
-# SESSION STATE
-# -------------------------------------------------
-
-if "result" not in st.session_state:
-    st.session_state.result = None
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# -------------------------------------------------
-# HEADER
-# -------------------------------------------------
-
-st.title("🎥 AI Meeting & Video Assistant")
-
-st.markdown(
-    """
-Upload a local meeting/video file or provide a YouTube URL.
-
-The assistant will automatically:
-
-- 📝 Generate Transcript
-- 📋 Create Summary
-- ✅ Extract Action Items
-- 🔑 Extract Key Decisions
-- ❓ Identify Questions
-- 💬 Let you chat with the meeting
-"""
-)
-
-st.divider()
-
-# -------------------------------------------------
-# INPUT SECTION
-# -------------------------------------------------
-
-col1, col2 = st.columns([1, 1])
-
-with col1:
-
-    input_type = st.radio(
-        "Choose Source",
-        [
-            "Upload File",
-            "YouTube URL"
-        ]
-    )
-
-with col2:
-
-    language = st.selectbox(
-        "Language",
-        [
-            "english",
-            "hinglish"
-        ]
-    )
-
-source = None
-
-# -------------------------------------------------
-# FILE UPLOAD
-# -------------------------------------------------
-
-if input_type == "Upload File":
-
-    uploaded_file = st.file_uploader(
-        "📂 Drag & Drop Video/Audio Here",
-        type=[
-            "mp4",
-            "mov",
-            "avi",
-            "mkv",
-            "webm",
-            "mp3",
-            "wav",
-            "m4a"
-        ]
-    )
-
-    if uploaded_file:
-
-        temp_dir = tempfile.gettempdir()
-
-        temp_path = os.path.join(
-            temp_dir,
-            uploaded_file.name
-        )
-
-        with open(temp_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-        source = temp_path
-
-        st.success("File Uploaded Successfully")
-
-        if uploaded_file.type.startswith("video"):
-            st.video(uploaded_file)
-
-        elif uploaded_file.type.startswith("audio"):
-            st.audio(uploaded_file)
-
-# -------------------------------------------------
-# YOUTUBE INPUT
-# -------------------------------------------------
-
-else:
-
-    source = st.text_input(
-        "Paste YouTube URL"
-    )
-
-# -------------------------------------------------
-# PROCESS BUTTON
-# -------------------------------------------------
-
-if st.button("🚀 Process Meeting"):
-
-    if not source:
-
-        st.warning("Please upload a file or provide a YouTube URL.")
-
+def run_pipeline(file, youtube_url, language):
+    if file is not None:
+        source = file.name
+    elif youtube_url.strip():
+        source = youtube_url.strip()
     else:
+        return "⚠️ Please upload a file or enter a YouTube URL.", "", "", "", "", "", ""
 
-        with st.spinner("Processing video..."):
+    try:
+        chunks = process_input(source)
+        transcript = transcribe_all(chunks, language=language)
+        title = generate_title(transcript)
+        summary = summarize(transcript)
+        action_items = extract_action_items(transcript)
+        decisions = extract_key_decisions(transcript)
+        questions = extract_questions(transcript)
+        rag_chain_state["chain"] = build_rag_chain(transcript)
+        return title, summary, action_items, decisions, questions, transcript, "✅ Processing complete!"
+    except Exception as e:
+        return f"❌ Error: {str(e)}", "", "", "", "", "", ""
 
-            try:
 
-                result = run_pipeline(
-                    source,
-                    language
-                )
+def chat(message, history):
+    if rag_chain_state["chain"] is None:
+        return history + [[message, "⚠️ Please process a meeting first."]]
+    try:
+        answer = ask_question(rag_chain_state["chain"], message)
+    except Exception as e:
+        answer = f"❌ Error: {str(e)}"
+    history.append([message, answer])
+    return history
 
-                st.session_state.result = result
 
-                st.success("Processing Complete!")
+with gr.Blocks(
+    title="AI Meeting & Video Assistant",
+    theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="purple"),
+    css="""
+        .gradio-container { max-width: 1200px !important; margin: auto; }
+        .title-text { text-align: center; font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .subtitle-text { text-align: center; color: #6b7280; margin-bottom: 2rem; }
+        footer { display: none !important; }
+    """
+) as demo:
 
-            except Exception as e:
+    gr.HTML('<div class="title-text">🎥 AI Meeting & Video Assistant</div>')
+    gr.HTML('<div class="subtitle-text">Upload a video/audio file or paste a YouTube URL to transcribe, summarise, and chat with your meeting.</div>')
 
-                st.error(f"Error: {str(e)}")
-
-# -------------------------------------------------
-# RESULTS
-# -------------------------------------------------
-
-if st.session_state.result:
-
-    result = st.session_state.result
-
-    st.divider()
-
-    st.subheader("📌 Generated Title")
-
-    st.info(result["title"])
-
-    st.divider()
-
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        [
-            "📋 Summary",
-            "✅ Action Items",
-            "🔑 Decisions",
-            "❓ Questions",
-            "📄 Transcript"
-        ]
-    )
-
-    # ---------------- SUMMARY ----------------
-
-    with tab1:
-
-        st.markdown(result["summary"])
-
-    # ---------------- ACTION ITEMS ----------------
-
-    with tab2:
-
-        st.markdown(result["action_items"])
-
-    # ---------------- DECISIONS ----------------
-
-    with tab3:
-
-        st.markdown(result["decisions"])
-
-    # ---------------- QUESTIONS ----------------
-
-    with tab4:
-
-        st.markdown(result["questions"])
-
-    # ---------------- TRANSCRIPT ----------------
-
-    with tab5:
-
-        st.text_area(
-            "Transcript",
-            result["transcript"],
-            height=500
-        )
-
-    st.divider()
-
-    st.subheader("💬 Chat With Your Meeting")
-
-    rag_chain = result["rag_chain"]
-
-    for msg in st.session_state.messages:
-
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-    prompt = st.chat_input(
-        "Ask anything about this meeting..."
-    )
-
-    if prompt:
-
-        st.session_state.messages.append(
-            {
-                "role": "user",
-                "content": prompt
-            }
-        )
-
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        try:
-
-            answer = ask_question(
-                rag_chain,
-                prompt
+    with gr.Row():
+        with gr.Column(scale=1):
+            gr.Markdown("### 📥 Input")
+            file_input = gr.File(
+                label="Upload Video / Audio File",
+                file_types=[".mp4", ".mov", ".avi", ".mkv", ".webm", ".mp3", ".wav", ".m4a"]
             )
+            youtube_input = gr.Textbox(
+                label="Or paste YouTube URL",
+                placeholder="https://www.youtube.com/watch?v=..."
+            )
+            language_input = gr.Dropdown(
+                choices=["english", "hinglish"],
+                value="english",
+                label="Transcription Language"
+            )
+            process_btn = gr.Button("🚀 Process Meeting", variant="primary", size="lg")
+            status_box = gr.Textbox(label="Status", interactive=False)
 
-        except Exception as e:
+        with gr.Column(scale=2):
+            gr.Markdown("### 📌 Results")
+            title_output = gr.Textbox(label="Generated Title", interactive=False)
 
-            answer = f"Error: {str(e)}"
+            with gr.Tabs():
+                with gr.Tab("📋 Summary"):
+                    summary_output = gr.Markdown()
+                with gr.Tab("✅ Action Items"):
+                    action_output = gr.Markdown()
+                with gr.Tab("🔑 Key Decisions"):
+                    decisions_output = gr.Markdown()
+                with gr.Tab("❓ Questions"):
+                    questions_output = gr.Markdown()
+                with gr.Tab("📄 Transcript"):
+                    transcript_output = gr.Textbox(label="Full Transcript", lines=15, interactive=False)
 
-        with st.chat_message("assistant"):
-            st.markdown(answer)
+    gr.Markdown("---")
+    gr.Markdown("### 💬 Chat With Your Meeting")
+    chatbot = gr.Chatbot(height=400, bubble_full_width=False)
 
-        st.session_state.messages.append(
-            {
-                "role": "assistant",
-                "content": answer
-            }
-        )
+    with gr.Row():
+        chat_input = gr.Textbox(placeholder="Ask anything about this meeting...", label="Your question", scale=5)
+        send_btn = gr.Button("Send", variant="primary", scale=1)
+
+    process_btn.click(
+        fn=run_pipeline,
+        inputs=[file_input, youtube_input, language_input],
+        outputs=[title_output, summary_output, action_output, decisions_output, questions_output, transcript_output, status_box]
+    )
+
+    send_btn.click(fn=chat, inputs=[chat_input, chatbot], outputs=chatbot).then(fn=lambda: "", outputs=chat_input)
+    chat_input.submit(fn=chat, inputs=[chat_input, chatbot], outputs=chatbot).then(fn=lambda: "", outputs=chat_input)
+
+if __name__ == "__main__":
+    demo.launch()
