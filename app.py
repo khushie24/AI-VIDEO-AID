@@ -1,5 +1,4 @@
 import gradio as gr
-import tempfile
 import os
 from dotenv import load_dotenv
 
@@ -15,7 +14,6 @@ from core.extractor import (
 )
 from core.rag_engine import build_rag_chain, ask_question
 
-# ── Global state ───────────────────────────────────────────────────────────────
 rag_chain_state = {"chain": None}
 
 
@@ -52,19 +50,10 @@ def chat(message, history):
     return history
 
 
-with gr.Blocks(
-    title="AI Meeting & Video Assistant",
-    theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="purple"),
-    css="""
-        .gradio-container { max-width: 1200px !important; margin: auto; }
-        .title-text { text-align: center; font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
-        .subtitle-text { text-align: center; color: #6b7280; margin-bottom: 2rem; }
-        footer { display: none !important; }
-    """
-) as demo:
+with gr.Blocks(title="AI Meeting & Video Assistant") as demo:
 
-    gr.HTML('<div class="title-text">🎥 AI Meeting & Video Assistant</div>')
-    gr.HTML('<div class="subtitle-text">Upload a video/audio file or paste a YouTube URL to transcribe, summarise, and chat with your meeting.</div>')
+    gr.HTML('<h1 style="text-align:center;color:#4F46E5;">🎥 AI Meeting & Video Assistant</h1>')
+    gr.HTML('<p style="text-align:center;color:#6b7280;">Upload a video/audio file or paste a YouTube URL to transcribe, summarise, and chat with your meeting.</p>')
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -103,7 +92,7 @@ with gr.Blocks(
 
     gr.Markdown("---")
     gr.Markdown("### 💬 Chat With Your Meeting")
-    chatbot = gr.Chatbot(height=400, bubble_full_width=False)
+    chatbot = gr.Chatbot(height=400)
 
     with gr.Row():
         chat_input = gr.Textbox(placeholder="Ask anything about this meeting...", label="Your question", scale=5)
@@ -119,4 +108,8 @@ with gr.Blocks(
     chat_input.submit(fn=chat, inputs=[chat_input, chatbot], outputs=chatbot).then(fn=lambda: "", outputs=chat_input)
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=int(os.environ.get("PORT", 7860)),
+        theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="purple")
+    )
