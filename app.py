@@ -108,8 +108,10 @@ with gr.Blocks(title="AI Meeting & Video Assistant") as demo:
     chat_input.submit(fn=chat, inputs=[chat_input, chatbot], outputs=chatbot).then(fn=lambda: "", outputs=chat_input)
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+
     demo.launch(
         server_name="0.0.0.0",
-        server_port=int(os.environ.get("PORT", 7860)),
-        theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="purple")
+        server_port=port,
+        show_error=True
     )
