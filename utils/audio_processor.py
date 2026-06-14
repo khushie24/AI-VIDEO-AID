@@ -1,9 +1,7 @@
 import yt_dlp
 from pydub import AudioSegment
-import shutil
 import os
-AudioSegment.converter = shutil.which("ffmpeg")
-AudioSegment.ffprobe   = shutil.which("ffprobe")
+
 DOWNLOAD_DIR = 'downloades'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
