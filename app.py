@@ -1,9 +1,11 @@
 import streamlit as st
 import time
+import tempfile
+import os
 from dotenv import load_dotenv
 from utils.audio_processor import process_input
 from core.transcriber import transcribe_all
-from core.summarize import summarize, generate_title
+from core.summarizer import summarize, generate_title
 from core.extractor import extract_action_items, extract_key_decisions, extract_questions
 from core.rag_engine import build_rag_chain, ask_question
 
@@ -372,7 +374,16 @@ if run_btn:
             status_ph.info("⚙️ Pipeline running…")
 
             update_step("audio", "active")
-            chunks = process_input(source)
+            if isinstance(source, str):
+                source_path = source
+            else:
+                suffix = os.path.splitext(source.name)[-1]
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                tmp.write(source.read())
+                tmp.flush()
+                tmp.close()
+                source_path = tmp.name
+            chunks = process_input(source_path)
             update_step("audio", "done")
 
             update_step("transcript", "active")
